@@ -1,0 +1,10 @@
+model:
+  name: taxposed
+  num_suggestions: 1
+  weights: ./data/logs/epoch=3999-step=500000.ckpt
+  config_folder: ./configs/training
+  config_file: taxpose_mug.yaml
+  cloud_type: init
+  x_thresh: 0.5
+  y_thresh: 0.5
+  z_thresh: 0.5

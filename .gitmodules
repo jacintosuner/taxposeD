@@ -1,0 +1,4 @@
+[submodule "{submodule_path}"]
+	url = https://github.com/jacintosuner/taxposeD.git
+[submodule "."]
+	url = https://github.com/jacintosuner/taxposeD.git
