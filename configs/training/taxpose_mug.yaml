@@ -6,7 +6,7 @@ hydra:
     dir: ${log_dir}/${experiment}/sweep/${now:%Y-%m-%d_%H%M%S}
     subdir: ${hydra.job.num}
 
-log_dir: /home/jacinto/robot-grasp/logs/taxposed
+log_dir: /home/jacinto/robot-grasp/data/logs/taxposed
 # log_dir: /media/jenny/cubbins-archive/jwang_datasets/home_backup/jwang/code/equivariant_pose_graph/logs
 experiment: three_cubes
 wandb_group: r-pad

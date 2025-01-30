@@ -8,8 +8,10 @@ from python.equivariant_pose_graph.utils.load_model_utils import load_model
 from scipy.spatial.transform import Rotation as R
 from pycocotools import mask as maskUtils
 
+from visualize_taxposed_prediction import visualize
 
-# Example usage: python taxposed_inference_wrapper.py --input_path /home/jacinto/robot-grasp/data/contact_graspnet_pipeline_results_for_red_mug/contact_graspnet_input.npy --output_dir /home/jacinto/robot-grasp/data/contact_graspnet_pipeline_results_for_red_mug --gsam2_pred_path /home/jacinto/robot-grasp/data/contact_graspnet_pipeline_results_for_red_mug/grounded_sam_seg_mug.json --cfg plan.yaml
+
+# Example usage: python taxposed_inference_wrapper.py --input_path /home/jacinto/robot-grasp/data/contact_graspnet_pipeline_results_20250113_192755/contact_graspnet_input.npy --output_dir /home/jacinto/robot-grasp/data/contact_graspnet_pipeline_results_20250113_192755 --gsam2_pred_path /home/jacinto/robot-grasp/data/contact_graspnet_pipeline_results_20250113_192755/grounded_sam_seg_mug.json --cfg plan.yaml
 
 
 class TaxposedWrapper:
@@ -304,6 +306,10 @@ class TaxposedWrapper:
 
         # Predict the transformation
         suggested_transforms = self.predict(point_cloud, segmented_point_cloud)
+
+        # Visualize the point cloud if debug is true
+        if self.debug:
+            visualize(suggested_transforms[0], point_cloud, segmented_point_cloud)
         
         # Save the suggested transforms
         np.save(f"{self.output_dir}/taxposed_prediction.npy", suggested_transforms)
@@ -319,6 +325,7 @@ if __name__ == '__main__':
     parser.add_argument('--input_path', required=True, help='Input file for npy file containing rgb, depth, K (camera intrinsics), and (optional) segmentation with object ids')
     parser.add_argument('--gsam2_pred_path', required=False, help='Specify if input does not contains segmentation ids')
     parser.add_argument('--cfg', required=True, help='Path to the config file for the model')
+    parser.add_argument('--debug', action='store_true', help='Enable debug mode')
     
     args = parser.parse_args()
 
@@ -329,6 +336,6 @@ if __name__ == '__main__':
                                                    input_path=args.input_path,
                                                    gsam2_pred_path=args.gsam2_pred_path,
                                                    cfg=cfg,
-                                                   debug=True)
+                                                   debug=args.debug)
     
     taxposed_input_preprocessing.run()
