@@ -13,7 +13,7 @@ if(sys.version_info[1] < 8):
 else:
     from typing import Literal
 
-from PointNets.python.pointnets.models.mlp import MLP, MLPParams
+from vtamp.submodules.PointNets.python.pointnets.models.mlp import MLP, MLPParams
 
 
 @dataclass

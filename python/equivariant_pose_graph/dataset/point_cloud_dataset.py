@@ -228,6 +228,7 @@ class PointCloudDataset(Dataset):
         point_data = np.load(filename, allow_pickle=True)
         points_raw_np = point_data['clouds']
         classes_raw_np = point_data['classes']
+        masks_raw_np = point_data['masks']
         if(self.min_num_cameras < 4):
             camera_idxs = np.concatenate([[0], np.cumsum((np.diff(classes_raw_np) == -2))])
             # if(not np.all(np.isin(np.arange(4), np.unique(camera_idxs)))):
@@ -240,6 +241,7 @@ class PointCloudDataset(Dataset):
             valid_idxs = np.isin(camera_idxs, sampled_camera_idxs)
             points_raw_np = points_raw_np[valid_idxs]
             classes_raw_np = classes_raw_np[valid_idxs]
+            masks_raw_np = masks_raw_np[valid_idxs]
             
         points_action_np = points_raw_np[classes_raw_np == action_class].copy()
         points_action_mean_np = points_action_np.mean(axis=0)
@@ -249,13 +251,22 @@ class PointCloudDataset(Dataset):
         points_anchor_np = points_anchor_np - points_action_mean_np
         points_anchor_mean_np = points_anchor_np.mean(axis=0)
 
-        points_action = torch.from_numpy(points_action_np).float().unsqueeze(0)
-        points_anchor = torch.from_numpy(points_anchor_np).float().unsqueeze(0)
+        # Add the mask as a new dimension
+        mask_action_np = masks_raw_np[classes_raw_np == action_class].copy()
+        mask_anchor_np = masks_raw_np[classes_raw_np == anchor_class].copy()
+        mask_action = torch.from_numpy(mask_action_np).float().unsqueeze(1)
+        mask_anchor = torch.from_numpy(mask_anchor_np).float().unsqueeze(1)
+
+        points_action = torch.from_numpy(points_action_np).float()
+        points_anchor = torch.from_numpy(points_anchor_np).float()
+
+        points_action = torch.cat((points_action, mask_action), dim=1).unsqueeze(0)
+        points_anchor = torch.cat((points_anchor, mask_anchor), dim=1).unsqueeze(0)
 
         symmetric_cls = torch.Tensor([])
 
         misc_point_data = {}
-        if self.return_rpdiff_mesh_files:
+        if self.return_rpdiff_mesh_files:       # !!! This is false
             misc_point_data = {
                 "multi_obj_mesh_file": point_data['multi_obj_mesh_file'].item(),
                 "multi_obj_final_obj_pose": point_data['multi_obj_final_obj_pose'].item(),

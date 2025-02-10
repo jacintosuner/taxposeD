@@ -1,4 +1,8 @@
-[submodule "{submodule_path}"]
-	url = https://github.com/jacintosuner/taxposeD.git
 [submodule "."]
 	url = https://github.com/jacintosuner/taxposeD.git
+[submodule "PointNets"]
+    path = python/PointNets
+    url = git@github.com:r-pad/PointNets.git
+[submodule "vnn"]
+    path = python/vnn
+    url = git@github.com:FlyingGiraffe/vnn.git

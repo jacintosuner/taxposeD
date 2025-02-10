@@ -307,6 +307,13 @@ class TaxposedWrapper:
         # Predict the transformation
         suggested_transforms = self.predict(point_cloud, segmented_point_cloud)
 
+        # Overwriting 
+        # suggested_transforms = [np.array(
+        # [[ 5.69133091e-01, -5.88802046e-01,  5.73933512e-01, -7.20034118e-05],
+        #  [ 8.04948581e-01,  5.41394404e-01, -2.42795966e-01,  1.39073387e-04],
+        #  [-1.67765630e-01,  6.00170184e-01,  7.82080842e-01, -5.72023363e-05],
+        #  [ 0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  1.00000000e+00]])]
+
         # Visualize the point cloud if debug is true
         if self.debug:
             visualize(suggested_transforms[0], point_cloud, segmented_point_cloud)

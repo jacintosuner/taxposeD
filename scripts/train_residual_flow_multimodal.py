@@ -34,7 +34,6 @@ def setup_main(cfg):
     gradient_clipping = cfg.gradient_clipping
     
     trainer = pl.Trainer(logger=logger,
-                         gpus=1,
                          reload_dataloaders_every_n_epochs=1,
                          callbacks=[SaverCallbackModel(save_freq=cfg.ckpt_save_freq)],#, SaverCallbackEmbnnActionAnchorMultimodal()],
                          max_steps=cfg.max_steps,

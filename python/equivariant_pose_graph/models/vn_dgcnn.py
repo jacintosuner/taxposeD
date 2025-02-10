@@ -8,8 +8,8 @@ from dataclasses import dataclass
 import torch.nn as nn
 import torch.utils.data
 
-from vnn.models.utils.vn_dgcnn_util import get_graph_feature
-from vnn.models.vn_layers import *
+from vtamp.submodules.vnn.models.utils.vn_dgcnn_util import get_graph_feature
+from vtamp.submodules.vnn.models.vn_layers import *
 
 @dataclass
 class VNArgs:

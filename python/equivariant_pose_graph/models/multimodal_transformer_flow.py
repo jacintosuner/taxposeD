@@ -17,6 +17,8 @@ from equivariant_pose_graph.models.vn_dgcnn import VN_DGCNN, VNArgs
 from equivariant_pose_graph.models.pointnet2 import PointNet2SSG, PointNet2MSG
 from equivariant_pose_graph.models.pointnet2pyg import PN2DenseWrapper, PN2DenseParams, PN2EncoderWrapper, PN2EncoderParams, PN2HybridWrapper
 
+from vtamp.utils.pcd_utils import plot_latent_space             # !!! This is for debug visualizations only
+
 # Part of the code is referred from: http://nlp.seas.harvard.edu/2018/04/03/attention.html#positional-encoding
 
 
@@ -994,12 +996,12 @@ class Multimodal_ResidualFlow_DiffEmbTransformer(nn.Module):
         return dense, reference
     
     
-    def sample_dense_embedding(self, goal_emb, sampling_method='gumbel', n_samples=1):
+    def sample_dense_embedding(self, goal_emb, sampling_method='gumbel', n_samples=1, points=None):
         """Sample the dense goal embedding"""
         
-        # Disable dropout if this is a validation forward pass
-        d = self.dropout_goal_emb if self.training else 0
-        mask = torch.rand(goal_emb.shape) > d
+        # !!! Disable dropout if this is a validation forward pass
+        d = self.dropout_goal_emb if self.training else 0       
+        mask = torch.rand(goal_emb.shape) > d           # The full mask is true at inference, since there is no dropout
         goal_emb[mask == False] = float("-inf")
 
         samples = []
@@ -1015,6 +1017,38 @@ class Multimodal_ResidualFlow_DiffEmbTransformer(nn.Module):
             elif sampling_method == 'top_n':
                 top_idxs = torch.topk(goal_emb, n_samples, dim=-1)[1]
                 sample = torch.nn.functional.one_hot(top_idxs[:, i], num_classes=goal_emb.shape[-1]).float().to(goal_emb.device)
+
+                # plot_latent_space(points, goal_emb, top_idxs[0, i], 100)
+
+            elif sampling_method == 'argmax':
+
+                idx = torch.argmax(goal_emb, dim=1)
+                # print(idx)
+                sample = torch.nn.functional.one_hot(idx, num_classes=goal_emb.shape[-1]).float().to(goal_emb.device)
+
+                # Get the distances to the sampled points
+                distances = torch.linalg.vector_norm(points[:,:] - points[:, :, idx], dim=1, ord=2)
+                normalized_distances = n_samples * distances / torch.max(distances)
+                distances_filter = torch.clamp(normalized_distances, min=0.1/n_samples, max=1)
+                # goal_emb[:, idx] = goal_emb.min()
+
+                # plot_latent_space(points, goal_emb, idx, distances)
+                
+                goal_emb = distances_filter * goal_emb
+            
+            elif sampling_method == 'distances':
+                assert points is not None, "Need to provide points for distance sampling"
+                sample = F.gumbel_softmax(goal_emb, self.gumbel_temp, hard=True, dim=-1)    # !!! Gumbel softmax samples a discrete variable in a differentiable manner
+                sample_idx = sample.argmax(dim=-1)
+
+                # Get the distances to the sampled points
+                distances = torch.linalg.vector_norm(points[:,:] - points[:, :, sample_idx], dim=1, ord=2)
+                normalized_distances = n_samples * distances / torch.max(distances)
+                distances_filter = torch.clamp(normalized_distances, min=0.1/n_samples, max=1)
+
+                # plot_latent_space(points, goal_emb, sample_idx, distances)
+                
+                goal_emb = distances_filter * goal_emb
         
             else:
                 raise ValueError(f"Sampling method {sampling_method} not implemented")
@@ -1189,7 +1223,9 @@ class Multimodal_ResidualFlow_DiffEmbTransformer(nn.Module):
         sample_outputs = []
         if conditioning in ['pos_delta_vec', 'pos_loc3d', 'pos_onehot', 'pos_delta_l2norm', 'pos_exp_delta_l2norm', 'uniform_prior_pos_delta_l2norm', 'distance_prior_pos_delta_l2norm', 'pos_delta_l2norm_dist_vec', 'uniform_prior_pos_delta_l2norm_dist_vec', 'distance_prior_pos_delta_l2norm_dist_vec']:
 
-            goal_emb = (goal_emb + self.add_smooth_factor) / self.division_smooth_factor
+            # !!! This condition is true so this is run
+            
+            goal_emb = (goal_emb + self.add_smooth_factor) / self.division_smooth_factor        # (self.add_smooth_factor = 0.05, self.add_smooth_factor = 1)
 
             # Only handle the translation case for now
             goal_emb_translation = goal_emb[:,0,:]
@@ -1201,13 +1237,15 @@ class Multimodal_ResidualFlow_DiffEmbTransformer(nn.Module):
                 self, 
                 goal_emb_translation_action, 
                 sampling_method=sampling_method, 
-                n_samples=n_samples
+                n_samples=n_samples,
+                points=action_points
             )
             translation_samples_anchor = Multimodal_ResidualFlow_DiffEmbTransformer.sample_dense_embedding(
                 self, 
                 goal_emb_translation_anchor, 
                 sampling_method=sampling_method, 
-                n_samples=n_samples
+                n_samples=n_samples,
+                points=anchor_points
             )
             
             if z_samples is not None:
@@ -1247,9 +1285,12 @@ class Multimodal_ResidualFlow_DiffEmbTransformer(nn.Module):
                     'anchor_points_and_cond': anchor_points_and_cond,
                 }
                 
+                # TODO: Add the goal embedding here !!!
                 sample_outputs.append({
                     'action_points_and_cond': action_points_and_cond,
                     'anchor_points_and_cond': anchor_points_and_cond,
+                    'goal_emb_translation_action': goal_emb_translation_action,
+                    'goal_emb_translation_anchor': goal_emb_translation_anchor,
                     'for_debug': for_debug,
                 })
         elif conditioning in ["latent_z_linear", "latent_z_linear_internalcond"]:
@@ -1890,7 +1931,7 @@ class Multimodal_ResidualFlow_DiffEmbTransformer(nn.Module):
             raise ValueError(f"Sampling not supported for conditioning {self.conditioning}. Pick one of the latent_z_xxx conditionings")
         return action_points_and_cond, anchor_points_and_cond, goal_emb, for_debug
 
-
+# !!! This is the prior
 class Multimodal_ResidualFlow_DiffEmbTransformer_WithPZCondX(nn.Module):
     def __init__(self, residualflow_embnn, encoder_type="2_dgcnn", sample_z=True, 
                  shuffle_for_pzX=False, return_debug=False, use_action_z=True,
@@ -2000,8 +2041,12 @@ class Multimodal_ResidualFlow_DiffEmbTransformer_WithPZCondX(nn.Module):
                 if self.conditioning not in ["latent_z_linear", "latent_z_linear_internalcond"]:
                     if self.encoder_type == "2_dgcnn":
                         print(f'------ With 2 DGCNN Encoders ------')
+
+                        # !!! These are the dgcnn encoders used for action and anchor point clouds
                         self.p_z_cond_x_embnn_action = DGCNN(input_dims=self.input_dims, emb_dims=self.pzX_transformer_embnn_dims, num_heads=1, last_relu=False)
                         self.p_z_cond_x_embnn_anchor = DGCNN(input_dims=self.input_dims, emb_dims=self.pzX_transformer_embnn_dims, num_heads=1, last_relu=False)
+
+
                     elif self.encoder_type == '2_vn_dgcnn':
                         assert self.input_dims == 3, "Only support 3D input for VN_DGCNN"
                         print(f'------ With 2 VN_DGCNN Encoders ------')
@@ -2102,19 +2147,20 @@ class Multimodal_ResidualFlow_DiffEmbTransformer_WithPZCondX(nn.Module):
         action_points = input[0].permute(0, 2, 1)[:, :self.input_dims] # B,3,num_points
         anchor_points = input[1].permute(0, 2, 1)[:, :self.input_dims]
 
-        # Prepare the action/anchor point clouds
+        # Prepare the action/anchor point clouds (Mean-centering both w.r.t themselves)
         action_points_dmean = action_points
         anchor_points_dmean = anchor_points
-        if self.residflow_embnn.center_feature:
+        if self.residflow_embnn.center_feature:     # !!! This is True
             action_points_dmean = action_points[:, :3] - \
                 action_points[:, :3].mean(dim=2, keepdim=True)
             anchor_points_dmean = anchor_points[:, :3] - \
                 anchor_points[:, :3].mean(dim=2, keepdim=True)
                 
+            # This does not change anything, it's there just in case there are more axes which there are not. (But there might be for goal conditioning)
             action_points_dmean = torch.cat([action_points_dmean, action_points[:, 3:]], axis=1)
             anchor_points_dmean = torch.cat([anchor_points_dmean, anchor_points[:, 3:]], axis=1)
 
-        # Potentially shuffle the action and anchor points
+        # Potentially shuffle the action and anchor points      !!! Set to False
         if self.shuffle_for_pzX:
             action_shuffle_idxs = torch.randperm(action_points_dmean.size()[2])
             anchor_shuffle_idxs = torch.randperm(anchor_points_dmean.size()[2])
@@ -2122,22 +2168,23 @@ class Multimodal_ResidualFlow_DiffEmbTransformer_WithPZCondX(nn.Module):
             anchor_points_dmean = anchor_points_dmean[:,:,anchor_shuffle_idxs]
 
         def prepare(arr, is_action):
-            if self.shuffle_for_pzX:
+            if self.shuffle_for_pzX:        # This is False so prepare() does essentially nothing
                 shuffle_idxs = action_shuffle_idxs if is_action else anchor_shuffle_idxs
                 return arr[:,:,torch.argsort(shuffle_idxs)]
             else:
                 return arr
 
         # Jointly predict the action and anchor goal embeddings
-        if self.embedding_routine == "joint":
+        if self.embedding_routine == "joint":       # True
             # Obtain the goal embedding
-            if self.encoder_type == "1_dgcnn":
+            if self.encoder_type == "1_dgcnn":      # Encoder type is '2_dgcnn'
                 # Jointly predict the action and anchor embeddings
                 goal_emb_cond_x = self.p_z_cond_x_embnn(torch.cat([action_points_dmean, anchor_points_dmean], dim=-1))
                 goal_emb_cond_x_action = prepare(goal_emb_cond_x[:, :, :action_points_dmean.shape[-1]], True)
                 goal_emb_cond_x_anchor = prepare(goal_emb_cond_x[:, :, action_points_dmean.shape[-1]:], False)
             else:
-                # Separately predict the action and anchor embeddings
+                # This is run.
+                # Separately predict the action and anchor embeddings using their own dgcnn encoders
                 action_emb = self.p_z_cond_x_embnn_action(action_points_dmean)
                 anchor_emb = self.p_z_cond_x_embnn_anchor(anchor_points_dmean)
                 
@@ -2147,14 +2194,14 @@ class Multimodal_ResidualFlow_DiffEmbTransformer_WithPZCondX(nn.Module):
                     anchor_emb = torch.cat(anchor_emb, dim=1)
                 
                 # Apply cross-object transformer
-                if self.pzX_transformer in ["cross_object"]:
+                if self.pzX_transformer in ["cross_object"]:        # This is True, transformer is cross object
                     action_emb_tf, action_attn = self.p_z_cond_x_action_transformer(action_emb, anchor_emb)
                     anchor_emb_tf, anchor_attn = self.p_z_cond_x_anchor_transformer(anchor_emb, action_emb)
                     
                     if self.conditioning in ["latent_z_linear", "latent_z_linear_internalcond"]:
                         goal_emb_tf = action_emb_tf + anchor_emb_tf
                         goal_emb_cond_x = self.latent_proj(goal_emb_tf)
-                    else:
+                    else:       # This else is run
                         action_emb = self.action_proj(action_emb_tf)
                         anchor_emb = self.anchor_proj(anchor_emb_tf)
                     
@@ -2169,14 +2216,14 @@ class Multimodal_ResidualFlow_DiffEmbTransformer_WithPZCondX(nn.Module):
                         torch.cat([prepare(action_head, True), prepare(anchor_head, False)], dim=-1)
                             for action_head, anchor_head in zip(action_emb, anchor_emb)
                     ]
-                else:
+                else:       # This is run
                     # If using just a continuous latent, set the p(z|X) goal embedding as a list of mu, logvar
                     if self.conditioning in ["latent_z_linear", "latent_z_linear_internalcond"]:
                         goal_emb_cond_x = [goal_emb_cond_x[:, :self.latent_z_linear_size], goal_emb_cond_x[:, self.latent_z_linear_size:]]
 
                     # If not using just continuous latent, set the p(z|X) goal embedding to the concatenated action and anchor embeddings
-                    else:
-                        goal_emb_cond_x = torch.cat([prepare(action_emb, True), prepare(anchor_emb, False)], dim=-1)
+                    else:   # This is run
+                        goal_emb_cond_x = torch.cat([prepare(action_emb, True), prepare(anchor_emb, False)], dim=-1)        # prepare does nothing, just returns the array
             
             # Get n samples of spatially conditioned action and anchor points
             if sample_latent:
@@ -2186,7 +2233,7 @@ class Multimodal_ResidualFlow_DiffEmbTransformer_WithPZCondX(nn.Module):
                                                                                     goal_emb=goal_emb_cond_x,
                                                                                     sampling_method=sampling_method,
                                                                                     n_samples=n_samples)
-            else:
+            else:       # !!! This is run, sample latent is false
                 embedding_samples = Multimodal_ResidualFlow_DiffEmbTransformer.add_conditioning(self, 
                                                                                                 goal_emb_cond_x, 
                                                                                                 action_points[:, :3], 
@@ -2352,7 +2399,7 @@ class Multimodal_ResidualFlow_DiffEmbTransformer_WithPZCondX(nn.Module):
         else:
             raise ValueError(f"Unknown embedding_routine {self.embedding_routine}")
         
-        # Do the TAXPose forward pass
+        # Do the TAXPose forward pass   !!!
         
         outputs = []
         for embedding_sample in embedding_samples:
@@ -2434,6 +2481,10 @@ class Multimodal_ResidualFlow_DiffEmbTransformer_WithPZCondX(nn.Module):
             flow_action = {
                 **flow_action,
                 'goal_emb_cond_x': goal_emb_cond_x,
+                'action_sample': embedding_sample['for_debug']['trans_sample_action'],
+                'anchor_sample': embedding_sample['for_debug']['trans_sample_anchor'],
+                'action_distribution': embedding_sample['goal_emb_translation_action'],
+                'anchor_distribution': embedding_sample['goal_emb_translation_anchor'],
                 **pzY_logging,
                 **for_debug,
             }

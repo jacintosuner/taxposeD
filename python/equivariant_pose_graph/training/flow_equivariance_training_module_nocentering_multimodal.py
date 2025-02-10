@@ -153,6 +153,9 @@ class EquivarianceTrainingModule(PointCloudTrainingModule):
         return ans_dicts
 
     def predict(self, model_output, points_trans_action, points_trans_anchor):
+        """"
+        Runs prediction to get transformed actions and point clouds
+        """
         
         # If we've applied some sampling, we need to extract the predictions too...
         if "sampled_ixs_action" in model_output:
@@ -927,9 +930,13 @@ class EquivarianceTrainingModule(PointCloudTrainingModule):
         return pred_flow, pred_w
 
     def module_step(self, batch, batch_idx, log_prefix=''):
+        """
+        This function is used for training. This is basically a forward pass for training.
+        """
+        
         points_trans_action = batch['points_action_trans']
         points_trans_anchor = batch['points_anchor_trans']
-        points_onetrans_action = batch['points_action_onetrans'] if 'points_action_onetrans' in batch else batch['points_action']
+        points_onetrans_action = batch['points_action_onetrans']  if 'points_action_onetrans' in batch else batch['points_action'] 
         points_onetrans_anchor = batch['points_anchor_onetrans'] if 'points_anchor_onetrans' in batch else batch['points_anchor']
 
         # Model forward pass
@@ -1439,7 +1446,7 @@ class EquivarianceTrainingModule(PointCloudTrainingModule):
 
 
 
-class EquivarianceTrainingModule_WithPZCondX(PointCloudTrainingModule):
+class EquivarianceTrainingModule_WithPZCondX(PointCloudTrainingModule):     # This has the extra prior p(z|X)
 
     def __init__(self,
                  model_with_cond_x,
@@ -2010,16 +2017,21 @@ class EquivarianceTrainingModule_WithPZCondX(PointCloudTrainingModule):
     def extract_flow_and_weight(self, *args, **kwargs):
         return self.training_module_no_cond_x.extract_flow_and_weight(*args, **kwargs)
 
+    # !!! Forward pass for training
     def module_step(self, batch, batch_idx, log_prefix=''):
+        """
+        This function is used for training. This is basically a forward pass for training.
+        """
+
         points_trans_action = batch['points_action_trans']
         points_trans_anchor = batch['points_anchor_trans']
         points_action = batch['points_action']
         points_anchor = batch['points_anchor']
-        points_onetrans_action = batch['points_action_onetrans'] if 'points_action_onetrans' in batch else batch['points_action']
+        points_onetrans_action = batch['points_action_onetrans'] if 'points_action_onetrans' in batch else batch['points_action']   # ??? Is this there in our batch
         points_onetrans_anchor = batch['points_anchor_onetrans'] if 'points_anchor_onetrans' in batch else batch['points_anchor']
 
         # If joint training prior
-        if self.joint_train_prior:
+        if self.joint_train_prior:      # !!! This is True: This means jointly training the prior and the encoder decoder model.
             # Unfreeze components for p(z|Y) pass
             self.training_module_no_cond_x.model.freeze_residual_flow = False
             self.training_module_no_cond_x.model.freeze_z_embnn = False
@@ -2027,7 +2039,7 @@ class EquivarianceTrainingModule_WithPZCondX(PointCloudTrainingModule):
             self.training_module_no_cond_x.model.tax_pose.freeze_embnn = False
             
             # p(z|Y) pass
-            pzY_loss, pzY_log_values = self.training_module_no_cond_x.module_step(batch, batch_idx)
+            pzY_loss, pzY_log_values = self.training_module_no_cond_x.module_step(batch, batch_idx)     # !!! This is doing the module_step of EquivarianceTrainingModule()
             
             # Potentially freeze components for p(z|X) pass
             self.training_module_no_cond_x.model.freeze_residual_flow = self.cfg_freeze_residual_flow
@@ -2042,7 +2054,7 @@ class EquivarianceTrainingModule_WithPZCondX(PointCloudTrainingModule):
                                                  points_trans_anchor, 
                                                  points_onetrans_action, 
                                                  points_onetrans_anchor, 
-                                                 n_samples=self.n_samples)
+                                                 n_samples=self.n_samples)  # !!! Here it goes through
             translation_samples_action = [model_no_cond_x_outputs[i]['trans_sample_action'] for i in range(len(model_no_cond_x_outputs))]
             translation_samples_anchor = [model_no_cond_x_outputs[i]['trans_sample_anchor'] for i in range(len(model_no_cond_x_outputs))]
             z_samples = {"translation_samples_action": translation_samples_action, "translation_samples_anchor": translation_samples_anchor}
