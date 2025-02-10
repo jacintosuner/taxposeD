@@ -187,7 +187,7 @@ pzX_n_samples: 1 # How many samples to draw from the p(z|X) encoder embedding du
 pzX_get_errors_across_samples: False # Calculate errors metrics across all samples (i.e. across all predictions for a given input)
 pzX_use_debug_sampling_methods: False # Use debug sampling methods when getting errors across samples (i.e. 3 random samples, top 3 samples, and argmax sample)
 pzX_use_pzY_z_samples: False # Use the p(z|Y) z samples during p(z|X) forward pass
-sampling_method: gumbel # top_n #distances
+sampling_method: argmax # gumbel # top_n # distances
 
 # Settings for transformer based p(z|Y) and p(z|X)
 pzY_transformer: none # Use transformer for conditional/joint prediction of action/anchor z [cross_object, none]
